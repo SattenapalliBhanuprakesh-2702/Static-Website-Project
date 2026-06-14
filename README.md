@@ -14,15 +14,8 @@ To streamline day-to-day operations, the entire platform is managed by an automa
 The cloud-native platform is divided into two decoupled layers: the DevOps Automation Plane and the Secured Hosting Delivery Layer.
 
 DEVELOPMENT & DEPLOYMENT PLANE (CI/CD Automation Engine)
-[ VS Code Workspace ] ──(git push)──> [ GitHub Repository ] ──(Triggers)──> [ GitHub Actions ]
-│
-┌────────────────────────────────────────────────────────────┘
-▼ (Authenticated via Secure Programmatic IAM Access Keys)
-AWS HOSTING & GLOBAL DISTRIBUTION PLANE
-[ Public Web User ] ──(HTTPS)──> [ CloudFront CDN Edge Cache ] ──(OAC Security)──> [ Private S3 Bucket ]
-│
-[ /frontend assets ]
 
+![static website architecture](images/staticwebsite_architecture.png)
 
 ---
 
