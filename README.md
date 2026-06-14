@@ -1,103 +1,122 @@
-Here is the complete, comprehensive technical project report documenting your entire journey from a blank AWS console to a fully automated, production-ready cloud deployment.
+# Secure Serverless Static Website Deployment with Automated CI/CD Pipeline
 
-This document is written from your perspective ("I") so you can easily use it for your professional portfolio, resume, or GitHub repository.
+## 1. Project Executive Summary
+This project demonstrates a production-ready, cloud-native architecture for hosting a secure, high-performance static portfolio website on Amazon Web Services (AWS). Moving away from legacy server-managed hosting, this solution implements a zero-trust storage backend utilizing **Amazon S3**, a global content delivery network (CDN) edge-caching layer via **Amazon CloudFront**, and a fully automated **GitHub Actions** CI/CD pipeline. 
 
----
-
-# PROJECT REPORT: COMPREHENSIVE ARCHITECTURE & DEPLOYMENT OF A SECURE SERVERLESS STATIC WEBSITE WITH AUTOMATED CI/CD
-
----
-
-## 1. Executive Summary
-
-This project details the architectural engineering, security hardening, and deployment automation of a serverless personal portfolio website on Amazon Web Services (AWS). The design goal was to move away from legacy server hosting and instead implement a modern cloud-native system featuring a zero-trust storage backend, a global Content Delivery Network (CDN) edge cache, and a fully automated Continuous Integration/Continuous Deployment (CI/CD) pipeline.
-
-By combining Amazon S3, Amazon CloudFront, and GitHub Actions, I successfully launched a highly scalable, blazing-fast web platform that updates globally within seconds of a code push—all while maintaining a 100% private backend isolated from direct internet threats.
+By employing **Origin Access Control (OAC)**, the storage layer remains entirely isolated from public web threats. The automated pipeline guarantees that modifications made locally in **VS Code** are securely built, synchronized to S3, and globally refreshed via edge cache invalidations within seconds of a `git push`.
 
 ---
 
-## 2. Infrastructure Architecture Blueprint
+## 2. System Architecture Blueprint
 
-The system architecture is bifurcated into two foundational planes: the **Global Delivery Plane** and the **DevOps Automation Plane**.
-
-```
-DEVELOPMENT & DEPLOYMENT PLANE (CI/CD)
-[ VS Code / Local Workspace ] ──(git push)──> [ GitHub Repo ] ──(Trigger)──> [ GitHub Actions ]
-                                                                                   │
-                      ┌────────────────────────────────────────────────────────────┘
-                      ▼ (Authenticated via Secure IAM Secrets Keys)
+The system splits operational tasks across two core areas: global end-user content delivery and continuous automation.
+DEVELOPMENT & AUTOMATION PLANE (CI/CD)
+[ VS Code Workspace ] ──(git push)──> [ GitHub Repository ] ──(Triggers)──> [ GitHub Actions ]
+│
+┌────────────────────────────────────────────────────────────┘
+▼ (Authenticated via Secure IAM Access Keys)
 AWS HOSTING & DISTRIBUTION PLANE
-[ Public User ] ──(HTTPS)──> [ CloudFront CDN Edge Cache ] ──(OAC Security)──> [ Private S3 Bucket ]
-                                                                                   │
-                                                                             [ /frontend assets ]
+[ Web User ] ──(HTTPS)──> [ CloudFront CDN Edge Cache ] ──(OAC Security)──> [ Private S3 Bucket ]
+│
+[ /frontend assets ]
+---
 
-```
+## 3. Step-by-Step Engineering Narrative
+
+### Phase 1: Storage Tier & Isolation Layer (Amazon S3)
+The foundation of the architecture hosts the web application's static assets inside an object storage bucket.
+
+1. **Bucket Provisioning:** I created a globally unique bucket named `aws-static-website-s3-bucket` in the `us-east-1` region.
+2. **Access Hardening:** I activated **Block *all* public access** settings to prevent anonymous internet users from traversing or reading the raw S3 bucket directly.
+3. **Static Web Configuration:** I enabled static website hosting properties on the bucket, defining the default index presentation page to map to `index.html`.
+
+![S3 Static Website Hosting Options](static-website-hosting-option.png)
 
 ---
 
-## 3. Step-by-Step Implementation Narrative
+### Phase 2: Global Content Delivery & Origin Access Control (Amazon CloudFront)
+To expose the website files safely to global users without exposing the underlying storage bucket, I integrated an edge-routing routing framework.
 
-### Phase 1: Storage Layer Isolation (Amazon S3)
+1. **Distribution Launch:** I initialized an Amazon CloudFront distribution pointing its origin endpoint to the private S3 bucket.
 
-The foundational tier of the architecture serves as the permanent object store for all frontend assets.
+![CloudFront Distribution Initialization](distribution_button.png)
 
-* **Bucket Initialization:** I provisioned an isolated Amazon S3 bucket named `bhanuprakash-static-website-s3-bucket` within the `us-east-1` (N. Virginia) region.
-* **Security Hardening Baseline:** To enforce a strict security baseline, I enabled **Block *all* public access**. This explicitly guarantees that the bucket is completely sealed against anonymous web browsing and direct HTTP access attempts.
-* **Static Hosting Properties:** Within the bucket configuration, I designated **`index.html`** as the default entry point document.
+2. **Origin Access Control (OAC):** I implemented an **Origin Access Control (OAC)** gatekeeper profile. This creates a secure signature requirement for any traffic attempting to communicate with the bucket origin.
 
-### Phase 2: Global Content Delivery & Access Governance (CloudFront & OAC)
+![Origin Access Control Profile Creation](origin_control_access.png)
 
-To expose the website securely to global users with minimal latency, I integrated an edge-routing content delivery layer.
+3. **Restricting the S3 Bucket Policy:** I applied a secure, custom S3 bucket policy. This policy explicitly restricts data extraction (`s3:GetObject`) solely to the unique CloudFront distribution identifier `EX612QS1RFB1C`.
 
-* **CDN Provisioning:** I deployed an Amazon CloudFront distribution, mapping its upstream origin server directly to my newly created S3 bucket domain.
-* **Origin Access Control (OAC) Enforcement:** To maintain data privacy, I rejected legacy access configurations and implemented **Origin Access Control (OAC)**. OAC establishes a cryptographically verified connection profile, forcing AWS to verify that incoming traffic originates strictly from my specific CloudFront distribution before releasing objects.
-* **Access Policy Injection:** I injected a highly restrictive bucket policy into the S3 instance. This explicit policy grants `s3:GetObject` capabilities exclusively to the CloudFront distribution identity, locking out the rest of the public internet.
-* **Entry Object Resolution:** I mapped the distribution default root object configuration to **`index.html`**. This ensures seamless resolution to the main page when navigating to the root URL (`d1912p20xx46k7.cloudfront.net`).
+![Secured S3 Bucket Policy Configuration](bucket_policy.png)
+
+4. **Assigning the Default Root Object:** To resolve direct domain queries cleanly, I modified the distribution settings and mapped the **Default root object** field to `index.html`. This tells CloudFront exactly which file to look for when users land on the base domain identifier.
+
+![CloudFront Domain and Root Object Mapping](distribution_name.png)
+
+---
 
 ### Phase 3: Identity & Access Management (AWS IAM)
+Before configuring the external automation engine, I had to create an identity profile inside AWS with specific, limited permissions.
 
-With the core architecture functional, I began building the automation bridge by creating a secure identity inside AWS.
+1. **Programmatic Identity Account:** I provisioned an isolated IAM user named `github-s3-cloudfront-deployer` with management console access disabled.
 
-* **Programmatic Identity Creation:** I provisioned an AWS IAM user named **`github-s3-cloudfront-deployer`**. Following the principle of least privilege, I explicitly blocked management console web access, keeping this user strictly programmatic.
-* **Custom IAM Security Policy:** I designed a custom permission profile called **`github-s3-cloudfront-policy`**. This profile restricts the user to precisely four actions: syncing web assets to S3 (`s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`) and clearing cache edges (`cloudfront:CreateInvalidation`).
-* **API Credential Generation:** Navigating to the user's **Security credentials** menu, I bypassed default templates, selected the **Other** option, and safely generated an **Access Key ID** and **Secret Access Key** pair to authorize my remote deployment environment.
+![IAM User Creation Profile](iam_user_details.png)
 
-### Phase 4: CI/CD Pipeline Orchestration (GitHub Actions & VS Code)
+2. **Custom IAM Permissions Policy:** I attached a custom inline policy named `github-s3-cloudfront-policy`. This enforces strict least-privilege rules, limiting the account to explicit S3 sync actions and CloudFront invalidation requests.
 
-The final step was implementing a fully automated, continuous deployment workflow to replace manual asset hand-offs.
+![Custom IAM Policy Details](github_policy.png)
 
-* **Repository Scaffolding:** I created a public repository on GitHub named **`Static-Website-Project`**.
-* **Secrets Vaulting:** To protect my administrative AWS credentials, I stored them in GitHub's encrypted secrets storage area. I mapped five secure environmental secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_BUCKET`, and `CLOUDFRONT_DIST_ID`.
-* **Declarative Pipeline Configuration:** Using VS Code, I constructed a **YAML workflow file** at the root path: **`.github/workflows/deploy.yml`**. This script automates four sequential deployment tasks whenever a push event hits the `main` branch:
-1. Bootstraps a fresh, clean Ubuntu virtual runner.
-2. Authenticates securely into AWS using the encrypted repository secret keys.
-3. Executes an automated `aws s3 sync` to upload only changed assets from the local `./frontend` folder into S3, cleanly removing old files.
-4. Triggers an `aws cloudfront create-invalidation` across path `/*` to clear out edge-node memory caches worldwide.
+3. **Programmatic Key Generation:** Under the **Security credentials** configuration pane, I selected the **Other** option to safely generate an active **Access Key ID** and **Secret Access Key** pair.
 
+![Access Key Selection Configuration](security_credentails_option.png)
 
+![IAM Key Acknowledgment Window](access_key.png)
+
+![IAM User Security Credentials Home](iam-user-security-credentails.png)
 
 ---
 
-## 4. Live Operational Validation & Results
+### Phase 4: CI/CD Pipeline Engineering (GitHub Actions)
+The final stage links the source repository to the hosting cloud to manage updates automatically.
 
-To test the entire infrastructure end-to-end, I made a live modification to the source files inside VS Code.
+1. **Repository & Secret Injection:** I established a public repository named `Static-Website-Project`. Inside the actions configuration vault, I securely added my deployment parameters as encrypted environmental secrets.
 
-I modified my portfolio's subtitle, expanding it from `"AWS Cloud & DevOps Engineer"` to add my security specialty: **`"AWS Cloud & DevOps Engineer & Cyber security"`**.
+![GitHub Actions Encrypted Variables Repository Vault](gthub_credentials.png)
 
-Upon running a `git push` command, the architecture responded beautifully:
+2. **Workflow Scaffolding:** Within my local project environment, I laid down the directory paths to establish the pipeline automation logic file at `.github/workflows/deploy.yml`.
 
-1. **Instant Hook:** GitHub Actions caught the commit immediately.
-2. **Automated Run:** The runner spun up, validated credentials, synchronized the new frontend folder, and cleared the global edge caches.
-3. **Flawless Finish:** The workflow completed cleanly in just **14 seconds**.
-4. **Live Verification:** Refreshing the cloud URL displayed the updated, secure website live to the world.
+![Workspace Folder Structural Directory](github_directory.png)
+
+![YAML Pipeline Script Logic Configuration](depoly_yml.png)
 
 ---
 
-## 5. Final Key Technical Summary
+## 4. Live Production Validation & Cache Triumph
 
-| Infrastructure Layer      | Selected Service | Security Mechanism | Deployment Status |
-| --- | --- | --- | --- |
-| **Object Data Storage** | Amazon S3 | CloudFront OAC Only (Private) | **Fully Operational** |
-| **Content Delivery / Cache** | Amazon CloudFront | SSL/TLS Global Edge Caching | **Fully Operational** |
-| **Identity Delegation** | AWS IAM | Granular Least-Privilege Policy | **Fully Operational** |
-| **Pipeline Automation** | GitHub Actions | Encrypted Environment Secrets | **Fully Operational (14s build)** |
+To test the entire infrastructure end-to-end, I made a live modification to the website header source code inside VS Code, expanding my professional title to read: **`"AWS Cloud & DevOps Engineer & Cyber security"`**.
+
+1. **Manual Invalidation Baseline:** Initially, the cache system required manual cache clearance requests (`/*`) to force updates out to global nodes.
+
+![Creating a Manual CloudFront Invalidation](invalidation_creation.png)
+
+![Successfully Processed Cache Invalidation Track](successful_invalidation.png)
+
+2. **Automated Run Execution:** Upon running a `git push` command, the GitHub Actions runner intercepted the commit and flawlessly executed the deployment scripts in a fast **14-second** runtime window.
+
+![GitHub Actions Successful Build Pipelines](github_actions.png)
+
+3. **Live Deployment Outcome:** The system automatically synced the new assets to S3 and flushed the CloudFront edge nodes. Bypassing the local browser cache loop verified that the website reflects the live title changes globally.
+
+![Original Live Web Presentation Frame](Screenshot%202026-06-14%20074135.png)
+
+![Final Live Web Presentation displaying Title Additions](image_6f38e3.png)
+
+---
+
+## 5. Completed Infrastructure Metrics Matrix
+
+| Architecture Block | Managed Service Node | Security Access Protocol | Deployment Verification Status |
+| :--- | :--- | :--- | :--- |
+| **Object Data Storage** | Amazon S3 | CloudFront OAC Principal Only | **100% Operational (Private Boundary)** |
+| **Edge Delivery Content**| Amazon CloudFront | SSL/TLS Encrypted Edge Cache | **100% Operational (Global Edge Nodes)**|
+| **Identity Administration** | AWS IAM | Granular Least-Privilege Rules | **100% Operational (Programmatic API Only)**|
